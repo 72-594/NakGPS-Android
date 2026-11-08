@@ -300,20 +300,23 @@ const KEY='nakgps-cal';let cal={o:null,pairs:[]};
 try{cal=JSON.parse(localStorage.getItem(KEY))||cal}catch(e){}
 const saveCal=()=>{try{localStorage.setItem(KEY,JSON.stringify(cal))}catch(e){}};
 const gMe=el('g'),accC=el('circle',{r:0,fill:'#1a73e8','fill-opacity':.16,stroke:'#1a73e8','stroke-opacity':.4},gMe),dotC=el('circle',{r:7,fill:'#1a73e8',stroke:'#fff','stroke-width':3,display:'none'},gMe);
-const toM=(lat,lon)=>[(lon-cal.o[1])*Math.cos(cal.o[0]*Math.PI/180)*111320,(lat-cal.o[0])*110540];
-function fitT(){T=null;const P=cal.pairs;if(!P.length)return;if(P.length===1){const q=P[0];T={ar:0,ai:1/0.9,cu:[q.m[0],-q.m[1]],cp:q.p};MPP=0.9;return}
+/* Punto de referencia real: entrada de la colonia (Plus Code V3JJ+VHG, San Benito). El norte del plano apunta a la derecha. */
+const DEF={o:[16.882188,-89.918547],pairs:[{m:[0,0],p:[545,563]}]};
+const C=()=>cal.pairs.length?cal:DEF;
+const toM=(lat,lon)=>[(lon-C().o[1])*Math.cos(C().o[0]*Math.PI/180)*111320,(lat-C().o[0])*110540];
+function fitT(){T=null;const P=C().pairs;if(!P.length)return;if(P.length===1){const q=P[0];T={ar:0,ai:1/0.9,cu:[q.m[0],-q.m[1]],cp:q.p};MPP=0.9;return}
   const U=P.map(q=>[q.m[0],-q.m[1]]),n=P.length,cu=[U.reduce((s,u)=>s+u[0],0)/n,U.reduce((s,u)=>s+u[1],0)/n],cp=[P.reduce((s,q)=>s+q.p[0],0)/n,P.reduce((s,q)=>s+q.p[1],0)/n];
   let re=0,im=0,den=0;U.forEach((u,i)=>{const du=[u[0]-cu[0],u[1]-cu[1]],dp=[P[i].p[0]-cp[0],P[i].p[1]-cp[1]];re+=du[0]*dp[0]+du[1]*dp[1];im+=du[0]*dp[1]-du[1]*dp[0];den+=du[0]**2+du[1]**2});
   if(den<400){const q=P[0];T={ar:0,ai:1/0.9,cu:[q.m[0],-q.m[1]],cp:q.p};MPP=0.9;return}T={ar:re/den,ai:im/den,cu,cp};MPP=1/Math.hypot(T.ar,T.ai)}
 const toPx=m=>{const x=m[0]-T.cu[0],y=-m[1]-T.cu[1];return[T.cp[0]+T.ar*x-T.ai*y,T.cp[1]+T.ar*y+T.ai*x]};
 function updateGeo(x=''){const g=$('geo');
-  let t=!fix?'Pulsa ◎ para activar tu ubicación.':!T?`Para ubicarte: toca en el mapa el lugar donde estás ahora y pulsa “Estoy aquí”. Con un punto basta para empezar.`:outside?'Estás fuera del plano de la colonia.':`Ubicación activa · precisión ±${Math.round(fix.acc)} m.${cal.pairs.length<2?' Para más precisión, agrega otro punto a más de 30 m.':''}`;
+  let t=!fix?'Pulsa ◎ para activar tu ubicación.':!T?`Para ubicarte: toca en el mapa el lugar donde estás ahora y pulsa “Estoy aquí”. Con un punto basta para empezar.`:outside?'Estás a '+fmt(fix.dg)+' de la colonia. Usa el mapa para planificar rutas.':`Ubicación activa · precisión ±${Math.round(fix.acc)} m.${cal.pairs.length<2?' Para más precisión, agrega otro punto a más de 30 m.':''}`;
   if(x)t=fix?x+' '+t:x;g.textContent=t;
   if(cal.pairs.length){const b=document.createElement('button');b.textContent='Reiniciar calibración';b.style.cssText='display:block;margin-top:6px;font-size:13px';b.onclick=()=>{cal={o:null,pairs:[]};saveCal();T=null;MPP=0.9;refreshMe();compute();updateGeo()};g.appendChild(b)}}
 function refreshMe(){
   const hide=()=>{me=null;dotC.setAttribute('display','none');accC.setAttribute('r',0);[[from,'garita'],[to,'piscina']].forEach(([s,d])=>{const o=s.querySelector('option[value=me]');if(o){o.hidden=true;if(s.value==='me')s.value=d}})};
   if(!fix||!T){hide();return}
-  const p=toPx(toM(fix.lat,fix.lon));outside=!(p[0]>-40&&p[0]<966&&p[1]>-40&&p[1]<724);
+  const p=toPx(toM(fix.lat,fix.lon));outside=Math.min(...LOTS.map(l=>Math.hypot(l.c[0]-p[0],l.c[1]-p[1])))>60;
   if(outside){hide();return}
   me={name:'Mi ubicación',pos:p};
   dotC.setAttribute('cx',p[0]);dotC.setAttribute('cy',p[1]);dotC.setAttribute('display','');
@@ -324,9 +327,9 @@ function refreshMe(){
 function addCal(tap){
   if(!fix)return;
   if(fix.acc>40){updateGeo('La señal GPS es débil (±'+Math.round(fix.acc)+' m). Espera a que mejore y vuelve a intentar.');return}
-  if(!cal.o)cal.o=[fix.lat,fix.lon];
+  if(!cal.pairs.length){cal.o=DEF.o.slice();cal.pairs=[{m:[0,0],p:DEF.pairs[0].p.slice()}]}
   cal.pairs.push({m:toM(fix.lat,fix.lon),p:[Math.round(tap[0]),Math.round(tap[1])]});saveCal();fitT();first=true;refreshMe();compute();updateGeo()}
-function onFix(pos){fix={lat:pos.coords.latitude,lon:pos.coords.longitude,acc:pos.coords.accuracy};refreshMe();updateGeo()}
+function onFix(pos){fix={lat:pos.coords.latitude,lon:pos.coords.longitude,acc:pos.coords.accuracy,dg:Math.hypot((pos.coords.longitude-DEF.o[1])*Math.cos(DEF.o[0]*Math.PI/180)*111320,(pos.coords.latitude-DEF.o[0])*110540)};refreshMe();updateGeo()}
 function locate(){
   if(!navigator.geolocation){updateGeo('Este navegador no permite usar la ubicación.');return}
   if(watchId===null){watchId=navigator.geolocation.watchPosition(onFix,()=>{watchId=null;updateGeo('No se pudo obtener tu ubicación. Activa el GPS y el permiso del navegador, y abre el enlace directamente en el navegador del teléfono.')},{enableHighAccuracy:true,maximumAge:2000,timeout:30000});updateGeo('Buscando tu ubicación…');return}
@@ -354,7 +357,7 @@ const RULES=[
 [/Para ubicarte: toca en el mapa el lugar donde estás ahora y pulsa “Estoy aquí”\. Con un punto basta para empezar\./g,'To locate you: tap the place on the map where you are now and press “I’m here”. One point is enough to start.'],
 [/Ubicación activa · precisión ±(\d+) m\./g,'Location active · accuracy ±$1 m.'],
 [/ Para más precisión, agrega otro punto a más de 30 m\./g,' For better accuracy, add another point more than 30 m away.'],
-[/Estás fuera del plano de la colonia\./g,'You are outside the neighborhood plan.'],
+[/Estás a (.+?) de la colonia\. Usa el mapa para planificar rutas\./g,'You are $1 from the neighborhood. Use the map to plan routes.'],
 [/No se pudo obtener tu ubicación\. Activa el GPS y el permiso del navegador, y abre el enlace directamente en el navegador del teléfono\./g,'Could not get your location. Turn on GPS and the browser permission, and open the link directly in your phone browser.'],
 [/Este navegador no permite usar la ubicación\./g,'This browser does not allow location access.'],
 [/La señal GPS es débil \(±(\d+) m\)\. Espera a que mejore y vuelve a intentar\./g,'The GPS signal is weak (±$1 m). Wait for it to improve and try again.'],
